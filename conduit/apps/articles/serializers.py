@@ -2,11 +2,13 @@ from rest_framework import serializers
 
 from conduit.apps.profiles.serializers import ProfileSerializer
 
-from .models import Article, Comment, Tag
+from .models import Article, Comment, Tag, Category
 from .relations import TagRelatedField
 
 
 class ArticleSerializer(serializers.ModelSerializer):
+    # ReadOnly field return the category name and not the pk
+    category = serializers.ReadOnlyField(source='category.name')
     author = ProfileSerializer(read_only=True)
     description = serializers.CharField(required=False)
     slug = serializers.SlugField(required=False)
@@ -38,6 +40,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'slug',
             'tagList',
             'title',
+            'category',
             'updatedAt',
         )
 
@@ -72,6 +75,21 @@ class ArticleSerializer(serializers.ModelSerializer):
 
     def get_updated_at(self, instance):
         return instance.updated_at.isoformat()
+
+
+"""
+Category Serializer
+ReadOnly serializer field to return the supercategory name instead of the pk
+"""
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    supercategory = serializers.ReadOnlyField(source='supercategory.name')
+
+    class Meta:
+        model = Category
+        fields = ('name', 'slug', 'supercategory')
+        lookup_field = 'slug'
 
 
 class CommentSerializer(serializers.ModelSerializer):

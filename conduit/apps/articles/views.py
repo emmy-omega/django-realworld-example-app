@@ -6,12 +6,14 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Article, Comment, Tag
-from .renderers import ArticleJSONRenderer, CommentJSONRenderer
-from .serializers import ArticleSerializer, CommentSerializer, TagSerializer
+from .models import Article, Comment, Tag, Category
+from .renderers import ArticleJSONRenderer, CommentJSONRenderer, CategoryJSONRenderer
+from .serializers import ArticleSerializer, CommentSerializer, TagSerializer, CategorySerializer
+
+from rest_framework.decorators import action
 
 
-class ArticleViewSet(mixins.CreateModelMixin, 
+class ArticleViewSet(mixins.CreateModelMixin,
                      mixins.ListModelMixin,
                      mixins.RetrieveModelMixin,
                      viewsets.GenericViewSet):
@@ -28,6 +30,10 @@ class ArticleViewSet(mixins.CreateModelMixin,
         author = self.request.query_params.get('author', None)
         if author is not None:
             queryset = queryset.filter(author__user__username=author)
+
+        category = self.request.query_params.get('category', None)
+        if category is not None:
+            queryset = queryset.filter(category__name=category)
 
         tag = self.request.query_params.get('tag', None)
         if tag is not None:
@@ -49,7 +55,7 @@ class ArticleViewSet(mixins.CreateModelMixin,
         serializer_data = request.data.get('article', {})
 
         serializer = self.serializer_class(
-        data=serializer_data, context=serializer_context
+            data=serializer_data, context=serializer_context
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -83,7 +89,6 @@ class ArticleViewSet(mixins.CreateModelMixin,
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
     def update(self, request, slug):
         serializer_context = {'request': request}
 
@@ -91,19 +96,81 @@ class ArticleViewSet(mixins.CreateModelMixin,
             serializer_instance = self.queryset.get(slug=slug)
         except Article.DoesNotExist:
             raise NotFound('An article with this slug does not exist.')
-            
+
         serializer_data = request.data.get('article', {})
 
         serializer = self.serializer_class(
-            serializer_instance, 
+            serializer_instance,
             context=serializer_context,
-            data=serializer_data, 
+            data=serializer_data,
             partial=True
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class CategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    renderer_classes = (CategoryJSONRenderer,)
+    permission_classes = (IsAuthenticatedOrReadOnly,)
+    lookup_field = 'slug'
+
+    def create(self, request):
+        serializer_context = {
+            'request': request
+        }
+        serializer_data = request.data.get('category', {})
+
+        serializer = self.serializer_class(
+            data=serializer_data, context=serializer_context
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated], renderer_classes=[CategoryJSONRenderer])
+    def sub(self, request, slug=None):
+        serializer_context = {
+            'request': request
+        }
+        serializer_data = request.data.get('category', {})
+        supercategory = self.get_object()
+        serializer = self.serializer_class(
+            data=serializer_data, context=serializer_context)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(supercategory=supercategory)
+        return Response(serializer.data)
+
+    @action(detail=True, permission_classes=[IsAuthenticatedOrReadOnly],
+            renderer_classes=[ArticleJSONRenderer])
+    def articles(self, request, slug=None):
+        serializer_class = ArticleSerializer
+        serializer_context = {'request': request}
+        category = self.get_object()
+        articles = category.articles.all()
+        page = self.paginate_queryset(articles)
+        serializer = serializer_class(
+            page,
+            context=serializer_context,
+            many=True
+        )
+        return self.get_paginated_response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticatedOrReadOnly], renderer_classes=[ArticleJSONRenderer])
+    def article(self, request, slug=None):
+        serializer_class = ArticleSerializer
+        serializer_context = {'request': request}
+        category = self.get_object()
+        serializer_data = request.data.get('article', {})
+        serializer = serializer_class(
+            data=serializer_data, context=serializer_context)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(category=category)
+        return Response(serializer.data)
 
 
 class CommentsListCreateAPIView(generics.ListCreateAPIView):
