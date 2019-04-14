@@ -27,6 +27,9 @@ class Article(TimestampedModel):
         return self.title
 
 
+class Category(TimestampedModel):
+    pass
+
 class Comment(TimestampedModel):
     body = models.TextField()
 
