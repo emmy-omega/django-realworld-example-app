@@ -45,11 +45,11 @@ class ArticleSerializer(serializers.ModelSerializer):
         )
 
     def create(self, validated_data):
-        author = self.context.get('author', None)
+        # author = self.context.get('author', None)
 
         tags = validated_data.pop('tags', [])
 
-        article = Article.objects.create(author=author, **validated_data)
+        article = Article.objects.create(**validated_data)
 
         for tag in tags:
             article.tags.add(tag)
