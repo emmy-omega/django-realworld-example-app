@@ -11,6 +11,7 @@ from .renderers import ArticleJSONRenderer, CommentJSONRenderer, CategoryJSONRen
 from .serializers import ArticleSerializer, CommentSerializer, TagSerializer, CategorySerializer
 
 from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
 
 
 class ArticleViewSet(mixins.CreateModelMixin,
@@ -110,6 +111,35 @@ class ArticleViewSet(mixins.CreateModelMixin,
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    """
+    Viewset action for custom endpoint /articles/(?P<slug>[-\w]+)/favorite/?$ instead of creating another viewset 
+        such as ArticlesFavoriteAPIView comment out below
+    """
+    @action(detail=True, methods=['post', 'delete'], permission_classes=[IsAuthenticated], renderer_classes=[ArticleJSONRenderer])
+    def favorite(self, request, slug=None):
+        profile = request.user.profile
+        article = get_object_or_404(self.queryset, slug=slug)
+        print(f'Console: {article}')
+        if request.method == 'POST':
+            profile.favorite(article)
+        else:
+            profile.unfavorite(article)
+        serializer = self.serializer_class(article)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    """
+    Viewset action to return currently followed by the requesting user.
+    its a cleaner subtitute for  ArticlesFeedAPIView viewset commented below
+    """
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated], renderer_classes=[ArticleJSONRenderer])
+    def feed(self, request):
+        profile = request.user.profile
+        queryset = self.queryset.filter(author__in=profile.follows.all())
+        page = self.paginate_queryset(queryset)
+        serializer = self.serializer_class(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
 
 class CategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = Category.objects.all()
@@ -169,7 +199,7 @@ class CategoryViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.Upd
         serializer = serializer_class(
             data=serializer_data, context=serializer_context)
         serializer.is_valid(raise_exception=True)
-        serializer.save(category=category)
+        serializer.save(category=category, author=request.user.profile)
         return Response(serializer.data)
 
 
@@ -224,40 +254,40 @@ class CommentsDestroyAPIView(generics.DestroyAPIView):
         return Response(None, status=status.HTTP_204_NO_CONTENT)
 
 
-class ArticlesFavoriteAPIView(APIView):
-    permission_classes = (IsAuthenticated,)
-    renderer_classes = (ArticleJSONRenderer,)
-    serializer_class = ArticleSerializer
+# class ArticlesFavoriteAPIView(APIView):
+#     permission_classes = (IsAuthenticated,)
+#     renderer_classes = (ArticleJSONRenderer,)
+#     serializer_class = ArticleSerializer
 
-    def delete(self, request, article_slug=None):
-        profile = self.request.user.profile
-        serializer_context = {'request': request}
+#     def delete(self, request, article_slug=None):
+#         profile = self.request.user.profile
+#         serializer_context = {'request': request}
 
-        try:
-            article = Article.objects.get(slug=article_slug)
-        except Article.DoesNotExist:
-            raise NotFound('An article with this slug was not found.')
+#         try:
+#             article = Article.objects.get(slug=article_slug)
+#         except Article.DoesNotExist:
+#             raise NotFound('An article with this slug was not found.')
 
-        profile.unfavorite(article)
+#         profile.unfavorite(article)
 
-        serializer = self.serializer_class(article, context=serializer_context)
+#         serializer = self.serializer_class(article, context=serializer_context)
 
-        return Response(serializer.data, status=status.HTTP_200_OK)
+#         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def post(self, request, article_slug=None):
-        profile = self.request.user.profile
-        serializer_context = {'request': request}
+#     def post(self, request, article_slug=None):
+#         profile = self.request.user.profile
+#         serializer_context = {'request': request}
 
-        try:
-            article = Article.objects.get(slug=article_slug)
-        except Article.DoesNotExist:
-            raise NotFound('An article with this slug was not found.')
+#         try:
+#             article = Article.objects.get(slug=article_slug)
+#         except Article.DoesNotExist:
+#             raise NotFound('An article with this slug was not found.')
 
-        profile.favorite(article)
+#         profile.favorite(article)
 
-        serializer = self.serializer_class(article, context=serializer_context)
+#         serializer = self.serializer_class(article, context=serializer_context)
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+#         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class TagListAPIView(generics.ListAPIView):
@@ -275,24 +305,24 @@ class TagListAPIView(generics.ListAPIView):
         }, status=status.HTTP_200_OK)
 
 
-class ArticlesFeedAPIView(generics.ListAPIView):
-    permission_classes = (IsAuthenticated,)
-    queryset = Article.objects.all()
-    renderer_classes = (ArticleJSONRenderer,)
-    serializer_class = ArticleSerializer
+# class ArticlesFeedAPIView(generics.ListAPIView):
+#     permission_classes = (IsAuthenticated,)
+#     queryset = Article.objects.all()
+#     renderer_classes = (ArticleJSONRenderer,)
+#     serializer_class = ArticleSerializer
 
-    def get_queryset(self):
-        return Article.objects.filter(
-            author__in=self.request.user.profile.follows.all()
-        )
+#     def get_queryset(self):
+#         return Article.objects.filter(
+#             author__in=self.request.user.profile.follows.all()
+#         )
 
-    def list(self, request):
-        queryset = self.get_queryset()
-        page = self.paginate_queryset(queryset)
+#     def list(self, request):
+#         queryset = self.get_queryset()
+#         page = self.paginate_queryset(queryset)
 
-        serializer_context = {'request': request}
-        serializer = self.serializer_class(
-            page, context=serializer_context, many=True
-        )
+#         serializer_context = {'request': request}
+#         serializer = self.serializer_class(
+#             page, context=serializer_context, many=True
+#         )
 
-        return self.get_paginated_response(serializer.data)
+#         return self.get_paginated_response(serializer.data)
